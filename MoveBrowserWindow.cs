@@ -56,9 +56,9 @@ namespace MoveBrowserWindow
 
         static void Main(string[] args)
         {
-            if (args.Length == 0)
+            if (args.Length < 3)
             {
-                Console.WriteLine("Usage: MoveBrowserWindow.exe <delayInSeconds> <URL1> <URL2> ...");
+                Console.WriteLine("Usage: MoveBrowserWindow.exe <delayInSeconds> <fullscreenFlag (0 or 1)> <URL1> <URL2> ...");
                 return;
             }
 
@@ -68,12 +68,19 @@ namespace MoveBrowserWindow
                 return;
             }
 
+            if (!int.TryParse(args[1], out int fullscreenFlag) || (fullscreenFlag != 0 && fullscreenFlag != 1))
+            {
+                Console.WriteLine("Invalid fullscreen flag. Use 1 to enable F11 fullscreen, 0 to disable.");
+                return;
+            }
+
+
             // Apply the initial delay
             Console.WriteLine($"Waiting for {delayInSeconds} seconds before starting...");
             Thread.Sleep(delayInSeconds * 1000);  // Convert to milliseconds
 
             int monitorIndex = 0;
-            foreach (var url in args.Skip(1))
+            foreach (var url in args.Skip(2))
             {
                 var initialWindows = GetOpenWindows();
 
@@ -82,7 +89,10 @@ namespace MoveBrowserWindow
                 Thread.Sleep(5000);  // Wait for the window to appear
 
                 // Simulate F11 key press to go fullscreen
-                KeyboardSimulator.PressF11();
+                if (fullscreenFlag == 1)
+                {
+                    KeyboardSimulator.PressF11();
+                }
 
                 var newWindows = GetOpenWindows();
                 var newWindowHandles = newWindows.Keys.Except(initialWindows.Keys).ToList();
