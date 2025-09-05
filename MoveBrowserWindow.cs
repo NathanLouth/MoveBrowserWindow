@@ -1,6 +1,5 @@
 using System;
 using System.IO;
-using System.Text.Json;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
@@ -15,14 +14,66 @@ namespace MoveBrowserWindow
     {
         public class Config
         {
-            public int DelayInSeconds { get; set; }
-            public List<UrlAction> UrlActions { get; set; }
+            public int DelayInSeconds { get; set; } = 0;
+            public List<UrlAction> UrlActions { get; set; } = new List<UrlAction>();
         }
 
         public class UrlAction
         {
             public string Url { get; set; }
             public int Fullscreen { get; set; }
+        }
+
+        static Config ParseIniConfig(string path)
+        {
+            var config = new Config();
+            var lines = File.ReadAllLines(path);
+            UrlAction currentAction = null;
+
+            foreach (var rawLine in lines)
+            {
+                var line = rawLine.Trim();
+                if (string.IsNullOrWhiteSpace(line) || line.StartsWith("#") || line.StartsWith(";"))
+                    continue;
+
+                if (line.StartsWith("[") && line.EndsWith("]"))
+                {
+                    if (line.Equals("[Settings]", StringComparison.OrdinalIgnoreCase))
+                    {
+                        currentAction = null;
+                    }
+                    else
+                    {
+                        currentAction = new UrlAction();
+                        config.UrlActions.Add(currentAction);
+                    }
+                }
+                else
+                {
+                    var parts = line.Split(new[] { '=' }, 2);
+                    if (parts.Length != 2) continue;
+
+                    var key = parts[0].Trim();
+                    var value = parts[1].Trim();
+
+                    if (currentAction == null)
+                    {
+                        if (key.Equals("DelayInSeconds", StringComparison.OrdinalIgnoreCase) && int.TryParse(value, out var delay))
+                        {
+                            config.DelayInSeconds = delay;
+                        }
+                    }
+                    else
+                    {
+                        if (key.Equals("Url", StringComparison.OrdinalIgnoreCase))
+                            currentAction.Url = value;
+                        else if (key.Equals("Fullscreen", StringComparison.OrdinalIgnoreCase) && int.TryParse(value, out var fullscreen))
+                            currentAction.Fullscreen = fullscreen;
+                    }
+                }
+            }
+
+            return config;
         }
 
         public class WindowHelper
@@ -89,7 +140,7 @@ namespace MoveBrowserWindow
 
             if (args.Length == 0)
             {
-                configPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "config.json");
+                configPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "config.ini");
             }
             else
             {
@@ -105,8 +156,7 @@ namespace MoveBrowserWindow
             Config config;
             try
             {
-                string json = File.ReadAllText(configPath);
-                config = System.Text.Json.JsonSerializer.Deserialize<Config>(json);
+                config = ParseIniConfig(configPath);
             }
             catch (Exception ex)
             {
@@ -146,7 +196,7 @@ namespace MoveBrowserWindow
 
                 KeyboardSimulator.PressWinUP();
 
-                if (action.Fullscreen == 1)  // changed here
+                if (action.Fullscreen == 1)
                 {
                     Console.WriteLine($"Applying F11 to {action.Url}...");
                     KeyboardSimulator.PressF11();
