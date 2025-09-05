@@ -11,7 +11,6 @@ namespace MoveBrowserWindow
 {
     class Program
     {
-        // Window manipulation and keyboard events
         public class WindowHelper
         {
             [DllImport("user32.dll")]
@@ -41,58 +40,72 @@ namespace MoveBrowserWindow
             public static extern void keybd_event(byte bVk, byte bScan, uint dwFlags, uint dwExtraInfo);
 
             private const byte VK_F11 = 0x7A;
+            private const byte VK_LWIN = 0x5B;
+            private const byte VK_UP = 0x26;
+
             private const uint KEYEVENTF_KEYDOWN = 0x0000;
             private const uint KEYEVENTF_KEYUP = 0x0002;
 
             public static void PressF11() => SimulateKeyPress(VK_F11);
 
+            public static void PressWinUP()
+            {
+                keybd_event(VK_LWIN, 0, KEYEVENTF_KEYDOWN, 0);
+                Thread.Sleep(50);
+
+                keybd_event(VK_UP, 0, KEYEVENTF_KEYDOWN, 0);
+                Thread.Sleep(50);
+                keybd_event(VK_UP, 0, KEYEVENTF_KEYUP, 0);
+                Thread.Sleep(50);
+
+                keybd_event(VK_LWIN, 0, KEYEVENTF_KEYUP, 0);
+            }
+
             private static void SimulateKeyPress(byte key)
             {
                 keybd_event(key, 0, KEYEVENTF_KEYDOWN, 0);
-                Thread.Sleep(100);  // Slight delay for key press to register
+                Thread.Sleep(100);
                 keybd_event(key, 0, KEYEVENTF_KEYUP, 0);
             }
         }
 
         static void Main(string[] args)
         {
-            if (args.Length < 3)
+            if (args.Length < 3 || (args.Length - 1) % 2 != 0)
             {
-                Console.WriteLine("Usage: MoveBrowserWindow.exe <delayInSeconds> <fullscreenFlag (0 or 1)> <URL1> <URL2> ...");
+                Console.WriteLine("Usage: MoveBrowserWindow.exe <delayInSeconds> <URL1> <fullscreenFlag1> <URL2> <fullscreenFlag2> ...");
                 return;
             }
 
             if (!int.TryParse(args[0], out int delayInSeconds) || delayInSeconds < 0)
             {
-                Console.WriteLine("Invalid delay time. Please provide a positive integer.");
+                Console.WriteLine("Invalid delay time. Please provide a non-negative integer.");
                 return;
             }
 
-            if (!int.TryParse(args[1], out int fullscreenFlag) || (fullscreenFlag != 0 && fullscreenFlag != 1))
+            var urlActions = new List<(string url, int f11Flag)>();
+            for (int i = 1; i < args.Length; i += 2)
             {
-                Console.WriteLine("Invalid fullscreen flag. Use 1 to enable F11 fullscreen, 0 to disable.");
-                return;
+                string url = args[i];
+                if (!int.TryParse(args[i + 1], out int flag) || (flag != 0 && flag != 1))
+                {
+                    Console.WriteLine($"Invalid F11 flag for URL '{url}'. Use 1 to enable fullscreen, 0 to disable.");
+                    return;
+                }
+                urlActions.Add((url, flag));
             }
 
-
-            // Apply the initial delay
             Console.WriteLine($"Waiting for {delayInSeconds} seconds before starting...");
-            Thread.Sleep(delayInSeconds * 1000);  // Convert to milliseconds
+            Thread.Sleep(delayInSeconds * 1000);
 
             int monitorIndex = 0;
-            foreach (var url in args.Skip(2))
+            foreach (var (url, f11Flag) in urlActions)
             {
                 var initialWindows = GetOpenWindows();
 
-                // Start Chrome with the specified URL
+                Console.WriteLine($"Opening {url}...");
                 Process.Start("chrome.exe", $"--new-window {url}");
-                Thread.Sleep(5000);  // Wait for the window to appear
-
-                // Simulate F11 key press to go fullscreen
-                if (fullscreenFlag == 1)
-                {
-                    KeyboardSimulator.PressF11();
-                }
+                Thread.Sleep(5000);
 
                 var newWindows = GetOpenWindows();
                 var newWindowHandles = newWindows.Keys.Except(initialWindows.Keys).ToList();
@@ -104,6 +117,15 @@ namespace MoveBrowserWindow
                 else
                 {
                     Console.WriteLine($"Error: Multiple or no new windows found after opening {url}");
+                }
+
+                KeyboardSimulator.PressWinUP();
+
+                if (f11Flag == 1)
+                {
+                    Console.WriteLine($"Applying F11 to {url}...");
+                    KeyboardSimulator.PressF11();
+
                 }
 
                 monitorIndex++;
