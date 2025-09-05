@@ -1,4 +1,6 @@
 using System;
+using System.IO;
+using System.Text.Json;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
@@ -11,6 +13,18 @@ namespace MoveBrowserWindow
 {
     class Program
     {
+        public class Config
+        {
+            public int DelayInSeconds { get; set; }
+            public List<UrlAction> UrlActions { get; set; }
+        }
+
+        public class UrlAction
+        {
+            public string Url { get; set; }
+            public int Fullscreen { get; set; }
+        }
+
         public class WindowHelper
         {
             [DllImport("user32.dll")]
@@ -71,40 +85,51 @@ namespace MoveBrowserWindow
 
         static void Main(string[] args)
         {
-            if (args.Length < 3 || (args.Length - 1) % 2 != 0)
+            string configPath;
+
+            if (args.Length == 0)
             {
-                Console.WriteLine("Usage: MoveBrowserWindow.exe <delayInSeconds> <URL1> <fullscreenFlag1> <URL2> <fullscreenFlag2> ...");
+                configPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "config.json");
+            }
+            else
+            {
+                configPath = args[0];
+            }
+
+            if (!File.Exists(configPath))
+            {
+                Console.WriteLine($"Config file not found: {configPath}");
                 return;
             }
 
-            if (!int.TryParse(args[0], out int delayInSeconds) || delayInSeconds < 0)
+            Config config;
+            try
             {
-                Console.WriteLine("Invalid delay time. Please provide a non-negative integer.");
+                string json = File.ReadAllText(configPath);
+                config = System.Text.Json.JsonSerializer.Deserialize<Config>(json);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Failed to read or parse config file: {ex.Message}");
                 return;
             }
 
-            var urlActions = new List<(string url, int f11Flag)>();
-            for (int i = 1; i < args.Length; i += 2)
+            if (config == null || config.UrlActions == null || config.DelayInSeconds < 0)
             {
-                string url = args[i];
-                if (!int.TryParse(args[i + 1], out int flag) || (flag != 0 && flag != 1))
-                {
-                    Console.WriteLine($"Invalid F11 flag for URL '{url}'. Use 1 to enable fullscreen, 0 to disable.");
-                    return;
-                }
-                urlActions.Add((url, flag));
+                Console.WriteLine("Invalid config structure.");
+                return;
             }
 
-            Console.WriteLine($"Waiting for {delayInSeconds} seconds before starting...");
-            Thread.Sleep(delayInSeconds * 1000);
+            Console.WriteLine($"Waiting for {config.DelayInSeconds} seconds before starting...");
+            Thread.Sleep(config.DelayInSeconds * 1000);
 
             int monitorIndex = 0;
-            foreach (var (url, f11Flag) in urlActions)
+            foreach (var action in config.UrlActions)
             {
                 var initialWindows = GetOpenWindows();
 
-                Console.WriteLine($"Opening {url}...");
-                Process.Start("chrome.exe", $"--new-window {url}");
+                Console.WriteLine($"Opening {action.Url}...");
+                Process.Start("chrome.exe", $"--new-window {action.Url}");
                 Thread.Sleep(5000);
 
                 var newWindows = GetOpenWindows();
@@ -116,16 +141,15 @@ namespace MoveBrowserWindow
                 }
                 else
                 {
-                    Console.WriteLine($"Error: Multiple or no new windows found after opening {url}");
+                    Console.WriteLine($"Error: Multiple or no new windows found after opening {action.Url}");
                 }
 
                 KeyboardSimulator.PressWinUP();
 
-                if (f11Flag == 1)
+                if (action.Fullscreen == 1)  // changed here
                 {
-                    Console.WriteLine($"Applying F11 to {url}...");
+                    Console.WriteLine($"Applying F11 to {action.Url}...");
                     KeyboardSimulator.PressF11();
-
                 }
 
                 monitorIndex++;
